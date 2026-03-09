@@ -12,22 +12,30 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # MySQL connection
-db = mysql.connector.connect(
-    host=os.environ["DB_HOST"],
-    user=os.environ["DB_USER"],
-    password=os.environ["DB_PASSWORD"],
-    database=os.environ["DB_NAME"]
-)
-
-cursor = db.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS scores (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50),
-    attempts INT
-)
-""")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    for _ in range(30):
+        try:
+            conn = mysql.connector.connect(
+                host=os.environ["DB_HOST"],
+                user=os.environ["DB_USER"],
+                password=os.environ["DB_PASSWORD"],
+                database=os.environ["DB_NAME"],
+            )
+            cursor = conn.cursor()
+            with open("init.sql") as f:
+                for statement in f.read().split(";"):
+                    statement = statement.strip()
+                    if statement:
+                        cursor.execute(statement)
+            conn.commit()
+            yield
+            cursor.close()
+            conn.close()
+            break
+        except mysql.connector.Error:
+            time.sleep(1)
+   
 
 SECRET_NUMBER = random.randint(1, 100)
 attempts = 0
